@@ -1,3 +1,5 @@
+[![Downloads](https://static.pepy.tech/badge/bffuck)](https://pepy.tech/project/bffuck) [![Downloads](https://static.pepy.tech/badge/bffuck/month)](https://pepy.tech/project/bffuck) [![Downloads](https://static.pepy.tech/badge/bffuck/week)](https://pepy.tech/project/bffuck)
+
 # BFFuck
  Makes brainfucking easier
 
@@ -100,6 +102,51 @@ or
 eq(x,<variable>)
 ```
 
+Macros:
+```text
+macro $<name> # Macro with no arguments
+CODE
+endmacro
+
+macro $<name>(<arg1>,<arg2>,...) # Macro with arguments
+CODE
+endmacro
+
+$<name> # Using a macro with no arguments
+$<name>(<arg1>,<arg2>,...) # Using a macro with arguments
+```
+
+Memory:
+```text
+ptr(a,b) # Store address of a to variable b
+ref(a,b) # Store value of address b to variable a
+set(a,b) # Set value of address b to a (variable or integer literal)
+```
+
+Libraries
+```text
+?libraryname
+```
+Includes the library `library name` (with file extension).
+
+It first searches the library in current directory, and then in the `stdlib` directory in the package.
+
+There are standard libraries for BFFuck, they are:
+* `env.bff` gets size of a "byte" specified by the compiler
+* `alloc.bff` allocates memory
+* `array.bff` manages memory using arrays
+* `rng.bff` a not very decent random number generator
+
+An example of the `rng.bff` library is here:
+```text
+?rng.bff
+x=0
+while(1)
+$rnd(x)
+outc(x)
+endwhile
+```
+Prints random bytes.
 ### Platform
 BFFuck is in **pure Python** and therefore it supports any platform.
 
@@ -108,7 +155,7 @@ Programs compiled from BFFuck needs you to have 8 bit cells that wrap.
 
 ### Disadvantages
 BFFuck currently has these disadvantages:
-1. It's numbers are 8 bit numbers.
+1. <s>It's numbers are 8 bit numbers.</s> You can choose 8-bit, 16-bit or 32-bit numbers using the `byte` keyword argument. But you need to run it on a 8-bit interpreter. <font color="red">REMEMBER: Using numbers with more bits is slower and increases the size of program largely! If you're using 32 bit, remember to use an extremely optimizing interpreter like bffsree!</font>
 2. It has some bugs.
 
 

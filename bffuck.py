@@ -1,5 +1,56 @@
+import re, os
+
+multipliers = ["[>++++++++++<-]>", "[<++++++++++>-]<"]
+expanders = {
+    1: {">": ">", "<": "<", "+": "+", "-": "-", "[": "[", "]": "]"},
+    2: {
+        ">": ">>>>",
+        "<": "<<<<",
+        "+": ">+<+[>-]>[->>+<]<<",
+        "-": ">+<[>-]>[->>-<]<<-",
+        "[": ">+<[>-]>[->+>[<-]<[<]>[-<+>]]<-[+<",
+        "]": ">+<[>-]>[->+>[<-]<[<]>[-<+>]]<-]<",
+    },
+    4: {
+        ">": ">>>>>",
+        "<": "<<<<<",
+        "+": "+[<+>>>>>+<<<<-]<[>+<-]+>>>>>[<<<<<->>>>>[-]]<<<<<[->>+[<<+>>>>>+<<<-]<<[>>+<<-]+>>>>>[<<<<<->>>>>[-]]<<<<<[->>>+[<<<+>>>>>+<<-]<<<[>>>+<<<-]+>>>>>[<<<<<->>>>>[-]]<<<<<[->>>>+<<<<]]]>",
+        "-": "[<+>>>>>+<<<<-]<[>+<-]+>>>>>[<<<<<->>>>>[-]]<<<<<[->>[<<+>>>>>+<<<-]<<[>>+<<-]+>>>>>[<<<<<->>>>>[-]]<<<<<[->>>[<<<+>>>>>+<<-]<<<[>>>+<<<-]+>>>>>[<<<<<->>>>>[-]]<<<<<[->>>>-<<<<]>>>-<<<]>>-<<]>-",
+        "[": "[>>>>+>>>>>+<<<<<<<<<-]>>>>>>>>>[<<<<<<<<<+>>>>>>>>>-]<<<<<[[-]<<<<<+>>>>>]<<<[>>>+>>>>>+<<<<<<<<-]>>>>>>>>[<<<<<<<<+>>>>>>>>-]<<<<<[[-]<<<<<+>>>>>]<<[>>+>>>>>+<<<<<<<-]>>>>>>>[<<<<<<<+>>>>>>>-]<<<<<[[-]<<<<<+>>>>>]<[>+>>>>>+<<<<<<-]>>>>>>[<<<<<<+>>>>>>-]<<<<<[[-]<<<<<+>>>>>]<<<<<[[-]>",
+        "]": "[>>>>+>>>>>+<<<<<<<<<-]>>>>>>>>>[<<<<<<<<<+>>>>>>>>>-]<<<<<[[-]<<<<<+>>>>>]<<<[>>>+>>>>>+<<<<<<<<-]>>>>>>>>[<<<<<<<<+>>>>>>>>-]<<<<<[[-]<<<<<+>>>>>]<<[>>+>>>>>+<<<<<<<-]>>>>>>>[<<<<<<<+>>>>>>>-]<<<<<[[-]<<<<<+>>>>>]<[>+>>>>>+<<<<<<-]>>>>>>[<<<<<<+>>>>>>-]<<<<<[[-]<<<<<+>>>>>]<<<<<]>",
+    },
+}
+
+
+def _power_series(k, m):
+    x = int(k)
+    if not k:
+        return ""
+    if not x and len(k) < 2:
+        return ""
+    if len(k) < 2:
+        return "+" * x
+    top, rest = k[0], k[1:]
+    return "+" * int(top) + multipliers[m] + _power_series(rest, 1 - m)
+
+
+def power_series(x):
+    if not x:
+        return ""
+    if len(str(x)) & 1:
+        return _power_series(str(x), 0)
+    return _power_series(str(x), 0) + "[<+>-]<"
+
+
+def getstr(x):
+    normal, power = "+" * x, power_series(x)
+    if len(normal) < len(power):
+        return normal
+    return power
+
+
 class BFFuck(object):
-    """Main implemntation of BFFuck, a compiler making brainfucking easier"""
+    """Main implementation of BFFuck, a compiler making brainfucking easier"""
 
     def __init__(self, playfield=15):
         """Init object, playfield is the number of bytes used for temporary memory, the lesser the playfield is, the faster the final program is, but setting playfield to a number that is too small causes problems, especially if you want to use integer output."""
@@ -9,6 +60,9 @@ class BFFuck(object):
         self.mem = playfield  # Leftmost unused memory
         self.stack = []  # Stack for while loop
         self.ifstack = []  # Stack for if statement
+        self.ifvarstack = []
+        self.whilevarstack = []
+        self.haveelse = []
         self.playfield = playfield
         pass
 
@@ -36,7 +90,7 @@ class BFFuck(object):
             else:
                 self.bf += self.movptr(self.mem)
                 self.valdict[val] = self.mem
-                self.mem += 1
+                self.mem += 2
             if stmt == "inc":
                 self.bf += ","
             elif stmt == "in":
@@ -54,8 +108,17 @@ class BFFuck(object):
                     + "-]"
                 )
             elif stmt.isdigit():
-                self.bf += "[-]"
-                self.bf += "+" * int(stmt)
+                self.bf += (
+                    "[-]"
+                    + self.movptr(0)
+                    + getstr(int(stmt))
+                    + "["
+                    + self.movptr(self.valdict[val])
+                    + "+"
+                    + self.movptr(0)
+                    + "-"
+                    + "]"
+                )
             else:
                 if stmt in self.valdict:
                     self.bf += (
@@ -98,7 +161,7 @@ class BFFuck(object):
                     else:
                         if int(vn):  # while(1) is equivalent to while(2), while(3), etc
                             self.valdict["0"] = self.mem
-                            self.mem += 1
+                            self.mem += 2
                             self.bf += self.movptr(self.valdict["0"]) + "+["
                             self.stack.append(self.valdict["0"])
                         else:  # Skip program
@@ -107,59 +170,69 @@ class BFFuck(object):
             elif code.startswith(
                 "if("
             ):  # https://esolangs.org/wiki/Brainfuck_algorithms#if_(x)_{_code_}
+                self.haveelse.append(False)
                 if not (code.endswith(")")):
                     raise Exception("Unmatched bracket")
                 else:
                     vn = code[3:-1]
+                    x, y, z = self.mem, self.mem + 1, self.mem + 2
+                    self.mem += 6
                     if not vn.isdigit():
                         if vn not in self.valdict:
                             raise Exception("Variable not found")
                         else:
                             self.bf += (
-                                self.movptr(self.playfield - 1)
+                                self.movptr(x)
                                 + "["
                                 + "-"
                                 + "]"
-                                + self.movptr(self.playfield - 2)
+                                + self.movptr(y)
                                 + "["
                                 + "-"
                                 + "]"
                                 + self.movptr(self.valdict[vn])
                                 + "["
-                                + self.movptr(self.playfield - 1)
+                                + self.movptr(x)
                                 + "+"
-                                + self.movptr(self.playfield - 2)
+                                + self.movptr(y)
                                 + "+"
                                 + self.movptr(self.valdict[vn])
                                 + "-"
                                 + "]"
-                                + self.movptr(self.playfield - 1)
+                                + self.movptr(x)
                                 + "["
                                 + self.movptr(self.valdict[vn])
                                 + "+"
-                                + self.movptr(self.playfield - 1)
+                                + self.movptr(x)
                                 + "-"
-                                + "]"
-                                + self.movptr(self.playfield - 2)
+                                + "]+"
+                                + self.movptr(y)
                                 + "["
                             )
                             self.ifstack.append(self.valdict[vn])
+                            self.ifvarstack.append(x)
                     else:
+                        self.ifvarstack.append(-1)
                         if int(vn):
                             self.ifstack.append(-1)
                         else:
                             self.temp = self.bf
-                            self.stack.append(-2)  # Skip program
+                            self.ifstack.append(-2)  # Skip program
             if code == "endif":
                 if not self.ifstack:
                     raise Exception("End if without if")
                 prev = self.ifstack.pop()
+                x = self.ifvarstack.pop()
                 if prev == -2:
                     self.bf = self.temp + "]"
                 elif prev == -1:
                     pass
                 else:
-                    self.bf += self.movptr(self.playfield - 2) + "[-]]"
+                    if not self.haveelse[-1]:
+                        self.bf += self.movptr(x + 1) + "[-]]"
+                    else:
+                        self.bf += self.movptr(x) + "-]"
+                    self.haveelse.pop()
             if code == "endwhile":
                 if not self.stack:
                     raise Exception("End while without while")
@@ -170,9 +243,13 @@ class BFFuck(object):
                     self.bf += self.movptr(prev)
                     self.bf += "]"
             if code == "else":
+                self.haveelse[-1] = True
                 if not self.ifstack:
                     raise Exception("Else without if")
                 prev = self.ifstack.pop()
+                x = self.ifvarstack.pop()
+                y = x + 1
+                z = prev
                 if prev == -2:
                     self.bf = self.temp + "]"
                     self.ifstack.append(-1)
@@ -180,45 +257,16 @@ class BFFuck(object):
                     self.temp = self.bf
                     self.ifstack.append(-2)
                 else:
-                    self.valdict["0"] = self.mem
-                    self.mem += 1
                     self.bf += (
-                        self.movptr(self.valdict["0"])
-                        + "+"
-                        + self.movptr(self.playfield - 2)
+                        self.movptr(x)
+                        + "-"
+                        + self.movptr(y)
                         + "[-]]"
-                        + self.movptr(self.valdict["0"])
-                        + "-"
-                    )
-                    self.bf += (
-                        self.movptr(self.playfield - 1)
-                        + "["
-                        + "-"
-                        + "]"
-                        + self.movptr(self.playfield - 2)
-                        + "["
-                        + "-"
-                        + "]"
-                        + self.movptr(self.valdict["0"])
-                        + "["
-                        + self.movptr(self.playfield - 1)
-                        + "+"
-                        + self.movptr(self.playfield - 2)
-                        + "+"
-                        + self.movptr(self.valdict["0"])
-                        + "-"
-                        + "]"
-                        + self.movptr(self.playfield - 1)
-                        + "["
-                        + self.movptr(self.valdict["0"])
-                        + "+"
-                        + self.movptr(self.playfield - 1)
-                        + "-"
-                        + "]"
-                        + self.movptr(self.playfield - 2)
+                        + self.movptr(x)
                         + "["
                     )
-                    self.ifstack.append(self.valdict["0"])
+                    self.ifstack.append(z)
+                    self.ifvarstack.append(x)
             if code.startswith("outc("):
                 if not (code.endswith(")")):
                     raise Exception("Unmatched bracket")
@@ -231,12 +279,8 @@ class BFFuck(object):
                             self.bf += self.movptr(self.valdict[vn])
                             self.bf += "."
                     else:
-                        self.bf += (
-                            self.movptr(self.playfield - 1)
-                            + "[-]"
-                            + "+" * int(vn)
-                            + ".[-]"
-                        )
+                        ivn = int(vn)
+                        self.bf += self.movptr(0) + "[-]" + getstr(ivn) + ".[-]"
             elif code.startswith("out("):
                 if not (code.endswith(")")):
                     raise Exception("Unmatched bracket")
@@ -270,10 +314,11 @@ class BFFuck(object):
                                 + "]"
                             )
                     else:
+                        ivn = int(vn)
                         self.bf += (
                             self.movptr(0)
                             + "[-]"
-                            + "+" * int(vn)
+                            + getstr(ivn)
                             + ">[-]>[-]+>[-]+<[>[-<-<<[->+>+<<]>[-<+>]>>]++++++++++>[-]+>[-]>[-]>[-]<<<<<[->-[>+>>]>[[-<+>]+>+>>]<<<<<]>>-[-<<+>>]<[-]++++++++[-<++++++>]>>[-<<+>>]<<]<[.[-]<]<[-]"
                         )
             elif code.startswith("add("):
@@ -696,17 +741,179 @@ class BFFuck(object):
                     raise Exception("Unmatched bracket")
                 s = code[6:-1]
                 tmppos = self.ptr
-                self.bf += self.movptr(self.playfield - 1)
+                self.bf += self.movptr(self.playfield - 2)
                 for i in s:
                     if ord(i) > 255:
                         raise Exception("print() only supports ASCII")
                     else:
-                        self.bf += (
-                            ("+" * ord(i) if ord(i) < 128 else "-" * ord(256 - i))
-                            + "."
-                            + "[-]"
-                        )
+                        self.bf += getstr(ord(i)) + "." + "[-]"
                 self.bf += self.movptr(tmppos)
+            elif code.startswith("ptr("):
+                if not (code.endswith(")")):
+                    raise Exception("Unmatched bracket")
+                a, b = code[4:-1].split(",")
+                if a not in self.valdict or b not in self.valdict:
+                    raise Exception("Variable not found")
+                self.bf += self.movptr(self.valdict[b]) + getstr(self.valdict[a])
+            elif code.startswith("bf "):
+                self.bf += code[4:-1]
+            elif code.startswith("ref("):
+                if not (code.endswith(")")):
+                    raise Exception("Unmatched bracket")
+                a, b = code[4:-1].split(",")
+                if a not in self.valdict:
+                    raise Exception("Variable not found")
+                if b.isdigit():
+                    b = int(b)
+                    self.bf += (
+                        self.movptr(0)
+                        + "[-]"
+                        + self.movptr(b)
+                        + "["
+                        + self.movptr(0)
+                        + "+"
+                        + self.movptr(1)
+                        + "+"
+                        + self.movptr(b)
+                        + "-]"
+                        + self.movptr(self.valdict[a])
+                        + "[-]"
+                        + self.movptr(0)
+                        + "["
+                        + self.movptr(self.valdict[a])
+                        + "+"
+                        + self.movptr(0)
+                        + "-"
+                        + "]"
+                        + self.movptr(1)
+                        + "["
+                        + self.movptr(b)
+                        + "+"
+                        + self.movptr(1)
+                        + "-]"
+                    )
+                else:
+                    if b not in self.valdict:
+                        raise Exception("Variable not found")
+                    else:
+                        self.bf += (
+                            self.movptr(self.valdict[a])
+                            + "[-]"
+                            + self.movptr(self.playfield - 4)
+                            + "[-]"
+                            + self.movptr(self.valdict[b])
+                            + "["
+                            + self.movptr(self.playfield - 2)
+                            + "+"
+                            + self.movptr(self.playfield - 8)
+                            + "+"
+                            + self.movptr(self.valdict[b])
+                            + "-]"
+                            + self.movptr(self.playfield - 5)
+                            + "[-]++"
+                            + self.movptr(self.playfield - 1)
+                            + "[-]+"
+                            + self.movptr(self.playfield - 2)
+                            + "-" * (self.playfield - 2)
+                            + "["
+                            + self.movptr(self.playfield - 1)
+                            + "-[+>>-]>>[-]+<<--[++<<--]++>>>>"
+                            + self.movptr(self.playfield - 2)
+                            + "--]"
+                            + self.movptr(self.playfield - 1)
+                            + "-[+>>-]+<[>--[++<<--]++<+>>>>>-[+>>-]+<-]>--[++<<--]++>>>>"
+                            + self.movptr(self.playfield - 8)
+                            + "["
+                            + self.movptr(self.valdict[b])
+                            + "+"
+                            + self.movptr(self.playfield - 8)
+                            + "-]"
+                            + self.movptr(self.playfield - 6)
+                            + "["
+                            + self.movptr(self.valdict[a])
+                            + "+"
+                            + self.movptr(self.playfield - 1)
+                            + "-[+>>-]+<+>--[++<<--]++>>>>"
+                            + self.movptr(self.playfield - 6)
+                            + "-]"
+                        )
+            elif code.startswith("set("):
+                if not (code.endswith(")")):
+                    raise Exception("Unmatched bracket")
+                a, b = code[4:-1].split(",")
+                if not a.isdigit():
+                    if a not in self.valdict:
+                        raise Exception("Variable not found")
+                    else:
+                        self.bf += (
+                            self.movptr(self.playfield - 11)
+                            + "[-]"
+                            + self.movptr(self.playfield - 10)
+                            + "[-]"
+                            + self.movptr(self.valdict[a])
+                            + "["
+                            + self.movptr(self.playfield - 11)
+                            + "+"
+                            + self.movptr(self.playfield - 10)
+                            + "+"
+                            + self.movptr(self.valdict[a])
+                            + "-]"
+                            + self.movptr(self.playfield - 11)
+                            + "["
+                            + self.movptr(self.valdict[a])
+                            + "+"
+                            + self.movptr(self.playfield - 11)
+                            + "-]"
+                        )
+                else:
+                    self.bf += self.movptr(self.playfield - 10) + "[-]" + getstr(int(a))
+                if b.isdigit():
+                    b = int(b)
+                    self.bf += (
+                        self.movptr(b)
+                        + "[-]"
+                        + self.movptr(self.playfield - 10)
+                        + "["
+                        + self.movptr(b)
+                        + "+"
+                        + self.movptr(self.playfield - 10)
+                        + "-]"
+                    )
+                else:
+                    if b not in self.valdict:
+                        raise Exception("Variable not found")
+                    else:
+                        self.bf += (
+                            self.movptr(self.playfield - 4)
+                            + "[-]"
+                            + self.movptr(self.valdict[b])
+                            + "["
+                            + self.movptr(self.playfield - 2)
+                            + "+"
+                            + self.movptr(self.playfield - 8)
+                            + "+"
+                            + self.movptr(self.valdict[b])
+                            + "-]"
+                            + self.movptr(self.playfield - 5)
+                            + "[-]++"
+                            + self.movptr(self.playfield - 1)
+                            + "[-]+"
+                            + self.movptr(self.playfield - 2)
+                            + "-" * (self.playfield - 2)
+                            + "["
+                            + self.movptr(self.playfield - 1)
+                            + "-[+>>-]>>[-]+<<--[++<<--]++>>>>"
+                            + self.movptr(self.playfield - 2)
+                            + "--]"
+                            + self.movptr(self.playfield - 1)
+                            + "-[+>>-]+<[-]>--[++<<--]++<<<<<[>>>>>>>>>-[+>>-]+<+>--[++<<--]++<<<<<-]>>>>>>>>>"
+                            + self.movptr(self.playfield - 8)
+                            + "["
+                            + self.movptr(self.valdict[b])
+                            + "+"
+                            + self.movptr(self.playfield - 8)
+                            + "-]"
+                        )
 
     def join_semantically(self, strings):
         res = strings[0]
@@ -758,15 +965,128 @@ class BFFuck(object):
                 out += j * i
         return out.rstrip("+-><")
 
-    def compile(self, prog):
+    def expand(self, prog, byte):
+        """Expand program"""
+        if byte not in (1, 2, 4):
+            raise ValueError("Byte should by 1, 2, or 4, not {}".format(byte))
+        res = "" if byte != 4 else ">"
+        for i in prog:
+            if i in expanders[byte]:
+                res += expanders[byte][i]
+            else:
+                res += i
+        return res
+
+    def getmacros(self, prog):
+        macros = {}
+        macro = []
+        no_macro = []
+        macro_name = ""
+        for i in prog.split("\n"):
+            i = i.strip()
+            if i == "endmacro":
+                macros[macro_name] = macro
+                macro_name = ""
+                macro = []
+                continue
+            if macro_name:
+                macro.append(i)
+                continue
+            y = i
+            while "  " in y:
+                y = y.replace("  ", " ")
+            y, k = y[: y.find(" ")], y[y.find(" ") :].replace(" ", "")
+            if y == "macro":
+                if not k.startswith("$"):
+                    raise SyntaxError("Macros must start with '$'")
+                macro_name = k
+            else:
+                no_macro.append(i)
+        return (macros, "\n".join(no_macro))
+
+    def preprocess_libraries(self, prog):
+        flag = False
+        res = []
+        for i in prog.split("\n"):
+            i = i.strip()
+            if i and i[0] == "?":
+                try:
+                    with open(i[1:].strip(), "r") as f:
+                        c = f.read().split("\n")
+                    res += c
+                except FileNotFoundError:
+                    try:
+                        with open(
+                            os.path.join(
+                                os.path.dirname(__file__), "stdlib", i[1:].strip()
+                            ),
+                            "r",
+                        ) as f:
+                            c = f.read().split("\n")
+                        res += c
+                    except:
+                        raise FileNotFoundError(f"Library {i[1:].strip()} not found")
+                flag = True
+            else:
+                res.append(i)
+        return flag, "\n".join(res)
+
+    def can_be_preprocessed(self, prog):
+        macros, no_macro = self.getmacros(prog)
+        for i in no_macro.split("\n"):
+            if i.startswith("$"):
+                return True
+        return False
+
+    def preprocess(self, macros, no_macro):
+        """Preprocess macros"""
+        res = []
+        for i in no_macro.split("\n"):
+            i = i.split("#")[0].strip()
+            if i.startswith("$"):
+                if "(" not in i:
+                    res += macros[i]
+                else:
+                    mac_name, mac_args = i[: i.find("(")], i[i.find("(") :]
+                    for name, info in macros.items():
+                        if name.startswith(mac_name + "("):
+                            _args = name[name.find("(") :]
+                            args1, args2 = mac_args[1:-1].split(","), _args[1:-1].split(
+                                ","
+                            )
+                            if len(args1) != len(args2):
+                                raise SyntaxError("Argument table length wrong")
+                            for j in info:
+                                if j.strip().startswith("print("):
+                                    res.append(j)
+                                else:
+                                    t = j
+                                    for _i, _j in zip(args2, args1):
+                                        t = re.sub("\\b" + re.escape(_i) + "\\b", _j, t)
+                                    res.append(t)
+                            break
+            else:
+                res.append(i)
+        return "\n".join(res)
+
+    def compile(self, prog, byte=1):
         """Compiles BFFuck programs into brainfuck"""
         clean = ""
+        flag, prog = self.preprocess_libraries(prog)
+        while flag:
+            flag, prog = self.preprocess_libraries(prog)
+        all_macros = {}
+        while self.can_be_preprocessed(prog):
+            macros, no_macro = self.getmacros(prog)
+            for i, j in macros.items():
+                all_macros[i] = j
+            prog = self.preprocess(all_macros, no_macro)
         for i in prog.split("\n"):
             if len(i.strip()) == 0:
                 continue
-            if i.strip().startswith("print("):
-                clean = i.strip()  # Print needs to preserve whitespaces
+            if i.strip().startswith("print(") or i.strip().startswith("bf "):
+                clean = i.strip()  # Print and bf need to preserve whitespaces
             else:
                 clean = self.join_semantically(i.split()).split("#")[0]
             self.program(clean)
-        return self.opt(self.bf)
+        return self.opt(self.expand(self.opt(self.bf), byte))
